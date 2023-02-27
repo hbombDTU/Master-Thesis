@@ -3,6 +3,10 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.linear_model import LinearRegression
 
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import r2_score
+from sklearn.metrics import mean_absolute_error
+
 def scale_data(df: pd.DataFrame,
                columns: list):
     df_scaled = df.copy()
@@ -87,3 +91,28 @@ def censored_split(df: pd.DataFrame,
     ys = [y_mid, y_right]
 
     return xs, ys
+
+def print_results(y_true: np.ndarray,
+                  y_latent: np.ndarray,
+                  uncen_idx: list):
+
+    # compute performance metrics
+    print('The Coefficient of determination (R-squared) = {:.4f}'.format(
+        r2_score(y_true[uncen_idx], y_latent[uncen_idx])))
+
+    print('The mean absolute error (MAE)                = {:.4f}'.format(
+        mean_absolute_error(y_true[uncen_idx], y_latent[uncen_idx])))
+
+    print('The root mean squared error (RMSE)           = {:.4f}'.format(
+        mean_squared_error(y_true[uncen_idx], y_latent[uncen_idx], squared=False)))
+
+    return None
+
+def rev_min_max_func(scaled_val, df, name):
+    max_val = max(df[name])
+    min_val = min(df[name])
+    N = df.shape[0]
+    scaled_val_post = (scaled_val * N - 0.5) / (N - 1)
+    og_val = (scaled_val_post * (max_val - min_val)) + min_val
+
+    return og_val

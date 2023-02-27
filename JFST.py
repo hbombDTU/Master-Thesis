@@ -1,9 +1,11 @@
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
 
 from scipy.optimize import minimize
 from scipy.special import gamma
-from scipy.special import beta  # complete beta function (a,b)
-from scipy.special import betainc  # incomplete beta function (a,b,x)
+from scipy.special import beta
+from scipy.special import betainc
 from scipy.special import betaln
 from scipy.special import betaincinv
 
@@ -95,13 +97,14 @@ def jfst_NLL(xs, ys, params, a_shape, b_shape):
     s = params[-1]
 
     right = np.dot(x_right,b) - y_right
+
     # Compute the CDF; if SF then right = y_right - npdot(x_right,b)
     log_cdf = jfst_logcdf(right, a=a_shape, b=b_shape,sigma=s)
     cens_sum = log_cdf.sum()
 
     # Compute the PDF of uncensored
     mid =y_mid - np.dot(x_mid, b)
-    log_pdf = jfst_logpdf(mid, a=a_shape, b=b_shape, sigma=s)  ### may need to reformulate
+    log_pdf = jfst_logpdf(mid, a=a_shape, b=b_shape, sigma=s)
     mid_sum = log_pdf.sum()
 
     loglik = cens_sum + mid_sum - np.log(s)
@@ -123,7 +126,75 @@ def compute_pred(optm_param, X):
     return y
 
 
-def jfst_model_train(y_train,
+def find_opt(a_bnd: list,
+             b_bnd: list,
+             sigma: float,
+             N: int,
+             cen_idx: list,
+             uncen_idx: list,
+             df: pd.DataFrame,
+             X_df: pd.DataFrame,
+             method='L-BFGS-B',
+             print_result=True
+             ):
+    a_range = np.arange(a_bnd[0], a_bnd[1] + 0.0011, (a_bnd[1] - a_bnd[0]) / N)
+    b_range = np.arange(b_bnd[0], b_bnd[1] + 0.001, (b_bnd[1] - b_bnd[0]) / N)
+
+    a_s, b_s = np.meshgrid(a_range, b_range)
+
+    a_values = []
+    b_values = []
+    s_values = []
+
+    params0 = init_params(df['Power Actual [kW]'], X_df, uncen_idx)
+    xs, ys = censored_split(df, X_df, cen_idx, uncen_idx)
+
+    NLL_min = 0
+    NLL_values = []
+
+    for a_array, b_array in tqdm(zip(a_s, b_s), total=len(a_s)):
+        for a, b in zip(a_array, b_array):
+
+            a_shape = a
+            b_shape = b
+
+            bnds = [(None, None) for i, _ in
+                    enumerate(X_df.columns)]  # ((None, None), (None, None), (None, None), (0, None))
+            bnds.append((0.0001, None))  # bounds for sigma
+
+            result = minimize(lambda params: jfst_NLL(xs, ys, params, a_shape=a_shape, b_shape=b_shape), params0,
+                              method=method,
+                              bounds=bnds,
+                              )
+            if result.success:
+                a_values.append(a_shape)
+                b_values.append(b_shape)
+                s_values.append(result.x[-1])
+
+                NLL_values.append(result.fun)
+
+                # Compute predictions
+                y_latent = compute_pred(result, X_df)
+
+                if result.fun < NLL_min:
+                    NLL_min = result.fun
+                    best_a = a_shape
+                    best_b = b_shape
+                    best_s = result.x[-1]
+
+                    if print_result:
+                        print(
+                            f'a: {best_a} \t b: {best_b} \t s: {best_s} \t New NLL_min: {NLL_min}')  # New RMSE: {min_rmse}')#New NLL_min: {NLL_min}')
+
+    if print_result:
+        print('--' * 80)
+        print('Done')
+
+    return a_values, b_values, s_values, NLL_min, NLL_values, best_a, best_b, best_s
+
+
+def jfst_model_train(df_train,
+                     y_train,
                      X_train,
                      X_test,
                      cen_idx_train,
@@ -147,9 +218,9 @@ def jfst_model_train(y_train,
                                                                                          print_result=False
                                                                                          )
 
-    a_shape = best_a  # 10.0#best_a # 10.0 #1.4
-    b_shape = best_b  # 13.0 #best_b # 13.0 #3.43
-    s_shape = best_s  # 0.08766455381115859#best_s # 0.08766455381115859#0.015
+    a_shape = best_a
+    b_shape = best_b
+    s_shape = best_s
 
     # Initialize parameters: beta and variance
     params0 = init_params(y_train,
@@ -164,7 +235,8 @@ def jfst_model_train(y_train,
             enumerate(X_train.columns)]  # ((None, None), (None, None), (None, None), (0, None))
     bnds.append((0.0001, None))  # bounds for sigma
 
-    result = minimize(lambda params: jfst_NLL(xs, ys, params, a_shape=a_shape, b_shape=b_shape), params0,
+    result = minimize(lambda params: jfst_NLL(xs, ys, params, a_shape=a_shape, b_shape=b_shape),
+                      params0,
                       method='L-BFGS-B',
                       bounds=bnds,
                       )
@@ -176,7 +248,7 @@ def jfst_model_train(y_train,
     neg_idx = y_latent < 0
     median = jfst_inv_cdf(0.5, best_a, best_b, best_s)
     ev = expected_value(best_a, best_b, best_s)
-    y_latent[neg_idx] = min(y_test)
+    y_latent[neg_idx] = min(y_train)
     y_latent_median = y_latent + median
     y_latent_exp = y_latent + ev
 
