@@ -1,7 +1,10 @@
 import math
 import pandas as pd
+import numpy as np
 
 from sklearn.mixture import GaussianMixture
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
+from sklearn.decomposition import PCA
 
 # function definition to compute magnitude o f the vector
 def magnitude(vector):
@@ -14,6 +17,11 @@ def compute_PCA(df, features, number):
 
     return X_all
 
+
+def compute_error(df, features):
+    error_square = np.square(df[features[0]] - df[features[1]])
+
+    return error_square.values
 
 def train_GMM(X_train):
     gmm = GaussianMixture(n_components=2,
@@ -47,3 +55,11 @@ def train_GMM(X_train):
 def baseline(error_square):
     return [0 if x_value > 0.025 else 1 for x_value in error_square.values]
 
+
+def print_results_gmm(y_true, y_pred):
+    print('Accuracy: %.3f' % accuracy_score(y_true, y_pred))
+    print('Precision: %.3f' % precision_score(y_true, y_pred))
+    print('Recall: %.3f' % recall_score(y_true, y_pred))
+    print('F1 Score: %.3f' % f1_score(y_true, y_pred))
+
+    return None
