@@ -23,19 +23,21 @@ def scale_data(df: pd.DataFrame,
     return df_scaled, scaler
 
 
-def preprocessing(df: pd.DataFrame):
+def preprocessing(df: pd.DataFrame,
+                 air_feature='Air temp Average',
+                 gti_feature='GTI Average [W]'):
     # Pre-processing
 
     # Columns for scaling
     columns_tran = df.columns[:-1]
 
     # Remove outliers
-    outliers_idx = np.where(df['Air temp Average'] < 17)[0]  # np.where(df_scaled['Mod_Temp Average'] <= 0.2)[0]
-    outliers_time = df.iloc[outliers_idx, :].index  # df_scaled.iloc[outliers_idx, :].index
-    df_pre = df.drop(outliers_time)  # df_scaled.drop(outliers_time)
+    outliers_idx = np.where(df[air_feature] < 17)[0] 
+    outliers_time = df.iloc[outliers_idx, :].index 
+    df_pre = df.drop(outliers_time)  
 
     # Drop dark hours
-    nodark = (df_pre['GTI Average [W]'] > 0)  # df_scaled['Power Actual [kW]'] > min(df_scaled['Power Actual [kW]'])
+    nodark = (df_pre[gti_feature] > 0)
     df_prenodark = df_pre[nodark]
 
     return df_prenodark
@@ -78,20 +80,22 @@ def init_params(y_true: np.ndarray,
 def censored_split(df: pd.DataFrame,
                    X: pd.DataFrame,
                    cen_idx: list,
-                   uncen_idx: list):
+                   uncen_idx: list,
+                   power_feature='Power Actual [kW]'):
 
     # split features into censored and uncensored index
     x_mid = X[uncen_idx] # uncensored
     x_right = X[cen_idx] # right-censored
 
-    y_mid = df['Power Actual [kW]'][uncen_idx]
-    y_right = df['Power Actual [kW]'][cen_idx]
+    y_mid = df[power_feature][uncen_idx]
+    y_right = df[power_feature][cen_idx]
 
     xs = [x_mid, x_right]
     ys = [y_mid, y_right]
 
     return xs, ys
 
+  
 def print_results(y_true: np.ndarray,
                   y_latent: np.ndarray,
                   uncen_idx: list):
@@ -108,6 +112,7 @@ def print_results(y_true: np.ndarray,
 
     return None
 
+  
 def rev_min_max_func(scaled_val, df, name):
     max_val = max(df[name])
     min_val = min(df[name])
